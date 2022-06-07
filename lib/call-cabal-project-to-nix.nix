@@ -210,7 +210,31 @@ let
                   then throw "${inputMap.${repoData.url}.rev} may not match ${repoData.ref} for ${repoData.url} use \"${repoData.url}/${repoData.ref}\" as the inputMap key if ${repoData.ref} is a branch or tag that points to ${inputMap.${repoData.url}.rev}."
                   else inputMap.${repoData.url})
             else if repoData.sha256 != null
-              then fetchgit { inherit (repoData) url sha256; rev = repoData.ref; }
+              then
+                let
+                  netrc-file = args.netrc-file or null;
+                  netrcPhase = pkgs.lib.optionalString (args.netrc-file != null) ''
+                    if [ -f ${netrc-file} ]; then
+                      echo "[herp-patch] Use netrc-file(${netrc-file}) to fetch private repositories" >&2
+                      cat ${netrc-file} >> netrc
+                    else
+                      echo "[herp-patch] netrc-file(${netrc-file}) is not found" >&2
+                    fi
+                  '' + ''
+                    if [ -n "''$GITHUB_PRIVATE_USERNAME" -a -n "''$GITHUB_PRIVATE_PASSWORD" ]; then
+                      echo "[herp-patch] Use environment variables(GITHUB_PRIVATE_USERNAME, GITHUB_PRIVATE_PASSWORD) to fetch private repositories" >&2
+                      echo "[herp-patch] This mode only works in single-user mode nix" >&2
+                    cat >> netrc <<EOF
+                    machine github.com
+                            login ''$GITHUB_PRIVATE_USERNAME
+                            password ''$GITHUB_PRIVATE_PASSWORD
+                    EOF
+                    else
+                      echo "[herp-patch] Environment variables(GITHUB_PRIVATE_USERNAME, GITHUB_PRIVATE_PASSWORD) are not found" >&2
+                    fi
+                  '';
+                  netrcImpureEnvVars = [ "GITHUB_PRIVATE_USERNAME" "GITHUB_PRIVATE_PASSWORD" ];
+                in fetchgit { inherit (repoData) url sha256; rev = repoData.ref; inherit netrcPhase netrcImpureEnvVars; }
             else
               let drv = builtins.fetchGit { inherit (repoData) url ref; };
               in __trace "WARNING: No sha256 found for source-repository-package ${repoData.url} ${repoData.ref} download may fail in restricted mode (hydra)"

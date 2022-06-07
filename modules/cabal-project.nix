@@ -135,5 +135,9 @@ in {
       type = nullOr (listOf unspecified);
       default = [];
     };
+    netrc-file = mkOption {
+      type = nullOr path;
+      default = null;
+    };
   };
 }
